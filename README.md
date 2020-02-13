@@ -5,7 +5,6 @@ This utility can help download root WSDL file and referenced definitions and sch
 All schema locations in downloaded files will be fixed to point to local files. 
 
 ---
-
 To use as standalone utility execute from command line with args:
 
     java -jar wsdl-tools-maven-plugin.jar download <WsdlUrl> <OutputDir> [<Prefix>]  
@@ -20,7 +19,6 @@ for example:
     java -jar wsdl-tools-maven-plugin.jar download http://my.web.com/ws/SuperService/ProxyService?wsdl ./SuperService SuperService
     
 ---
-
 To use as maven plugin, include in your .pom (as example):
 
     <plugin>
