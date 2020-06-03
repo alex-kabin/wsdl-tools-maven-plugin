@@ -12,7 +12,7 @@ To use as standalone utility execute from command line with args:
 where 
 * `WsdlUrl` - URL to root WSDL document, 
 * `OutputDir` - downloaded files output directory path, 
-* `Prefix` - optional output file name prefix.
+* `Prefix` - optional output file name prefix (pass "" to use autonaming)
     
 for example:
 
