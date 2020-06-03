@@ -20,6 +20,8 @@ import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public final class Downloader
 {
@@ -108,11 +110,13 @@ public final class Downloader
 
     private Downloader() { }
 
-    private Map<String, String> cache = new HashMap<>();
+    private Map<URI, String> cache = new HashMap<>();
     private int counter;
     private Path outputDir;
     private String prefix;
     private Logger log;
+
+    private static final String DEFAULT_PREFIX = "Service";
 
     public void run(URI wsdlUrl, File outputDir, String prefix, Logger log) throws Exception {
         if(outputDir == null) {
@@ -122,60 +126,106 @@ public final class Downloader
             this.outputDir = outputDir.toPath();
         }
 
-        String url;
         if(wsdlUrl == null) {
             throw new IllegalArgumentException("wsdlUrl parameter must be specified");
-        } else {
-            url = wsdlUrl.toString();
         }
 
-        this.prefix = "Service";
+        this.prefix = DEFAULT_PREFIX;
         if(prefix == null) {
             String path = wsdlUrl.getPath();
             if(path != null && !path.isEmpty()) {
                 if(path.endsWith("/")) {
                     path = path.substring(0, path.length()-1);
                 }
-                int i = path.lastIndexOf("/");
+                int i = path.lastIndexOf('/');
                 if(i >= 0) {
                     path = path.substring(i+1);
-                    if(path.length() > 0) {
+                    if(!path.isEmpty()) {
                         this.prefix = path;
                     }
                 }
             }
         } else {
-            this.prefix = prefix;
+            this.prefix = prefix.trim();
         }
 
         this.log = log == null ? DummyLogger.INSTANCE : log;
-        this.counter = -1;
+        this.counter = 0;
         this.cache.clear();
-        resolveDocument(url, DocType.WSDL);
+        resolveDocument(wsdlUrl, DocType.WSDL);
     }
 
-    private void processImports(NodeList nodes, DocType docType) throws Exception {
+    private void processImports(NodeList nodes, URI parentUrl, DocType docType) throws Exception {
         int count = nodes.getLength();
-        if(count > 0) {
-            for(int i=0; i<count; i++) {
-                Node node = nodes.item(i);
-                String url = node.getNodeValue();
-                if(url != null) {
-                    String path = resolveDocument(url, docType);
-                    node.setNodeValue(path);
+        for (int i = 0; i < count; i++) {
+            Node node = nodes.item(i);
+            String url = node.getNodeValue();
+            if (url != null) {
+                URI uri;
+                try {
+                    uri = URI.create(url);
                 }
+                catch (Exception ex) {
+                    log.warn("Bad URL in document '%s', node '%s'", parentUrl, node);
+                    throw ex;
+                }
+
+                if (!uri.isAbsolute()) {
+                    uri = parentUrl.resolve(uri);
+                }
+                String filePath = resolveDocument(uri, docType);
+                node.setNodeValue(filePath);
             }
         }
     }
 
-    private String buildNextFileName(DocType docType) {
-        counter += 1;
-        String suffix = counter > 0 ? "_" + counter : "";
-        String ext = docType == DocType.WSDL ? "wsdl" : "xsd";
-        return prefix + suffix + '.' + ext;
+    private final static Pattern xsdFileNameQueryPattern = Pattern.compile("xsd=(.+?)(&|\\z)");
+    private final static Pattern wsdlFileNameQueryPattern = Pattern.compile("wsdl=(.+?)(&|\\z)");
+
+    private static String deduceFileName(DocType docType, URI url) {
+        if (url == null) {
+            return "";
+        }
+        String filePath = url.getPath();
+        if (filePath.isEmpty()) {
+            return "";
+        }
+
+        String name = "";
+        if (filePath.endsWith("/")) {
+            Matcher matcher = (docType == DocType.XSD ? xsdFileNameQueryPattern : wsdlFileNameQueryPattern).matcher(url.getQuery());
+            if (matcher.find()) {
+                name = matcher.group(1);
+            }
+        } else {
+            name = filePath.substring(filePath.lastIndexOf('/') + 1);
+        }
+        if(name.length() > 64) {
+            return "";
+        }
+        return name;
     }
 
-    private String resolveDocument(String url, DocType docType) throws Exception {
+    private String buildNextFileName(DocType docType, URI url) {
+        String name = "".equals(prefix) ? deduceFileName(docType, url) : "";
+        String ext = docType == DocType.WSDL ? ".wsdl" : ".xsd";
+        if(name.isEmpty()) {
+            name = (prefix == null || prefix.isEmpty() ? DEFAULT_PREFIX : prefix) + (counter > 0 ? "_" + counter : "") + ext;
+            counter++;
+        }
+        else if(!name.toLowerCase().endsWith(ext)) {
+            name += ext;
+        }
+        final String n = name;
+        if(cache.values().stream().anyMatch(f -> f.equalsIgnoreCase(n))) {
+            int i = name.lastIndexOf('.');
+            name = name.substring(0, i) + '_' + (++counter) + name.substring(i);
+        }
+
+        return name;
+    }
+
+    private String resolveDocument(URI url, DocType docType) throws Exception {
         if (cache.containsKey(url)) {
             return cache.get(url);
         }
@@ -184,21 +234,21 @@ public final class Downloader
 
         log.info("Downloading %s from %s", docType, url);
 
-        Document doc = documentBuilder.parse(url);
+        Document doc = documentBuilder.parse(url.toString());
         //doc.getDocumentElement().normalize();
 
-        String fileName = buildNextFileName(docType);
+        String fileName = buildNextFileName(docType, url);
         cache.put(url, fileName);
 
         if (docType == DocType.WSDL) {
             NodeList wsdlImports = (NodeList) wsdlWsdlImportExpr.evaluate(doc, XPathConstants.NODESET);
-            processImports(wsdlImports, DocType.WSDL);
+            processImports(wsdlImports, url, DocType.WSDL);
 
             NodeList xsdImports = (NodeList) wsdlXsdImportExpr.evaluate(doc, XPathConstants.NODESET);
-            processImports(xsdImports, DocType.XSD);
+            processImports(xsdImports, url, DocType.XSD);
         } else {
             NodeList xsdImports = (NodeList) xsdXsdImportExpr.evaluate(doc, XPathConstants.NODESET);
-            processImports(xsdImports, DocType.XSD);
+            processImports(xsdImports, url, DocType.XSD);
         }
 
         Source input = new DOMSource(doc);

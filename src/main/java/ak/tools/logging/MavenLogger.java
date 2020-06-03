@@ -16,6 +16,11 @@ public class MavenLogger implements Logger
     }
 
     @Override
+    public void warn(String format, Object... args) {
+        log.warn(String.format(format, args));
+    }
+
+    @Override
     public void error(String format, Object... args) {
         log.error(String.format(format, args));
     }

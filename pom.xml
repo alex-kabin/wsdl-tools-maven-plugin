@@ -6,7 +6,7 @@
 
     <groupId>ak.tools</groupId>
     <artifactId>wsdl-tools-maven-plugin</artifactId>
-    <version>0.1</version>
+    <version>0.2</version>
     <packaging>maven-plugin</packaging>
     <description>WSDL Tools Maven Plugin</description>
 

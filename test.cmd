@@ -1,0 +1,1 @@
+java -jar ./target/wsdl-tools-maven-plugin.jar download http://192.168.88.248/svc/userContext/v1?wsdl ./svc ""

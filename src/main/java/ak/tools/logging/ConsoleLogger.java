@@ -10,6 +10,11 @@ public final class ConsoleLogger implements Logger
     }
 
     @Override
+    public void warn(String format, Object... args) {
+        System.out.println("WARN: " + String.format(format, args));
+    }
+
+    @Override
     public void error(String format, Object... args) {
         System.err.println(String.format(format, args));
     }
